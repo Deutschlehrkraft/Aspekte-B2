@@ -335,7 +335,7 @@ textarea.txt{width:100%;font-size:16px;font-family:inherit;padding:8px;border:1.
   </div>
   <div class="pane" id="vt-art">
     <div class="artq">
-      <p class="hint">Welcher Artikel? Im Plenum: Die Lernenden sagen den Artikel, die Lehrkraft klickt.</p>
+      <p class="hint">Welcher Artikel? Im Plenum: Die Lernenden sagen den Artikel, die Lehrkraft klickt. Bei einem Fehler wird der richtige Artikel groß gezeigt – erst mit „Weiter“ geht es weiter. Tastatur: 1 = der, 2 = die, 3 = das.</p>
       <div class="word" id="artWord"></div>
       <div class="bg" id="artBg"></div>
       <div><button class="a der" data-a="der">der</button><button class="a die" data-a="die">die</button><button class="a das" data-a="das">das</button></div>
@@ -472,22 +472,59 @@ document.addEventListener('keydown',e=>{
 
 /* Artikel-Quiz */
 const nouns=VOC.filter(r=>r.length>1 && /^(der|die|das) [A-ZÄÖÜ]/.test(r[0]) && !/nur Pl\.|^Pl\./.test(r[1]));
-let aq=[], ai=0, aok=0, atry=0;
+(function(){ /* Stil für Artikel-Training + Wortzähler */
+  const s=document.createElement('style');
+  s.textContent=`.artq button.a:disabled{cursor:default;opacity:.45}
+.artq button.a.right{opacity:1!important;color:#fff!important;transform:scale(1.15);box-shadow:0 0 0 4px rgba(27,127,59,.25)}
+.artq button.a.der.right{background:var(--der)} .artq button.a.die.right{background:var(--die)} .artq button.a.das.right{background:var(--das)}
+.artq button.a.wrong{opacity:1!important;text-decoration:line-through;background:var(--bad-bg)}
+.artq .fix{font-size:24px;margin:8px 0 4px}
+.artq .weiter{font-size:17px;padding:8px 22px;margin-top:8px;border:none;border-radius:8px;background:var(--blau);color:#fff;cursor:pointer;font-weight:700;font-family:inherit}
+.vt-count{font-weight:700;color:var(--blau);margin:6px 0}`;
+  document.head.appendChild(s);
+  const nW=VOC.filter(r=>r.length>1).length;
+  const vtEl=document.getElementById('vt');
+  if(vtEl) vtEl.insertAdjacentHTML('beforebegin',`<p class="vt-count">Insgesamt ${nW} Wörter und Ausdrücke · davon ${nouns.length} Nomen im Training „der · die · das?“</p>`);
+})();
+let aq=[], ai=0, aok=0, atry=0, aLock=false;
+const artBtns=document.querySelectorAll('.artq button.a');
 function newArt(){aq=nouns.map(n=>[Math.random(),n]).sort((a,b)=>a[0]-b[0]).map(x=>x[1]);ai=0;aok=0;atry=0;showArt();}
 function showArt(){
-  const n=aq[ai%aq.length]; const w=n[0].split(' ').slice(1).join(' ');
+  const n=aq[ai]; const w=n[0].split(' ').slice(1).join(' ');
+  aLock=false; artBtns.forEach(b=>{b.disabled=false;b.classList.remove('right','wrong');});
   document.getElementById('artWord').textContent=w; document.getElementById('artBg').textContent=n[2];
   document.getElementById('artFb').textContent='';
-  document.getElementById('artScore').textContent=atry?`${aok} von ${atry} richtig`:'';
+  document.getElementById('artScore').textContent=`Wort ${ai+1} von ${aq.length}`+(atry?` · ${aok} von ${atry} richtig`:'');
 }
-document.querySelectorAll('.artq button.a').forEach(b=>b.addEventListener('click',()=>{
-  const n=aq[ai%aq.length]; const art=n[0].split(' ')[0]; atry++;
+function nextArt(){
+  ai++; const fb=document.getElementById('artFb');
+  if(ai<aq.length) showArt();
+  else { fb.innerHTML=`Fertig! ${aok} von ${atry} richtig. <br><button class="weiter" onclick="newArt()">Neu starten</button>`; fb.style.color='var(--ink)'; }
+}
+artBtns.forEach(b=>b.addEventListener('click',()=>{
+  if(aLock) return; aLock=true;
+  const n=aq[ai]; const art=n[0].split(' ')[0]; atry++;
   const fb=document.getElementById('artFb');
-  if(b.dataset.a===art){aok++;fb.innerHTML=`✔ Richtig: <span class="art-${art}">${n[0]}</span>, ${n[1]}`;fb.style.color='var(--ok)';}
-  else{fb.innerHTML=`✘ Nein: <span class="art-${art}">${n[0]}</span>, ${n[1]}`;fb.style.color='var(--bad)';}
-  document.getElementById('artScore').textContent=`${aok} von ${atry} richtig`;
-  ai++; setTimeout(()=>{ if(ai<aq.length) showArt(); else {fb.innerHTML+=` — Fertig! <button onclick="newArt()">Neu starten</button>`;} },1400);
+  artBtns.forEach(x=>{x.disabled=true; if(x.dataset.a===art) x.classList.add('right');});
+  if(b.dataset.a===art){
+    aok++; fb.innerHTML=`✔ Richtig: <span class="art-${art}">${n[0]}</span>, ${n[1]}`; fb.style.color='var(--ok)';
+    document.getElementById('artScore').textContent=`Wort ${ai+1} von ${aq.length} · ${aok} von ${atry} richtig`;
+    setTimeout(nextArt,1200);
+  } else {
+    b.classList.add('wrong');
+    fb.innerHTML=`<div>✘ Nicht <s>${b.dataset.a}</s>, sondern:</div><div class="fix"><b class="art-${art}">${art}</b> <span style="color:var(--ink)">${n[0].split(' ').slice(1).join(' ')}</span><span style="font-size:17px;color:var(--grau)">, ${n[1]}</span></div><div style="font-size:14px;color:var(--grau)">Laut wiederholen: „${n[0]}“</div><button class="weiter" id="artWeiter">Weiter ▶</button>`;
+    fb.style.color='var(--bad)';
+    document.getElementById('artScore').textContent=`Wort ${ai+1} von ${aq.length} · ${aok} von ${atry} richtig`;
+    const wb=document.getElementById('artWeiter'); wb.addEventListener('click',nextArt);
+    setTimeout(()=>wb.focus(),50);
+  }
 }));
+document.addEventListener('keydown',e=>{
+  const pane=document.getElementById('vt-art'); if(!pane||!pane.classList.contains('on')) return;
+  if(/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+  const k={'1':'der','2':'die','3':'das','d':'der','i':'die','s':'das'}[e.key.toLowerCase()];
+  if(k && !aLock){ e.preventDefault(); document.querySelector(`.artq button.a[data-a="${k}"]`).click(); }
+});
 newArt();
 
 /* Tabs */
